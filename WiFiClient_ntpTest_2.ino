@@ -1,5 +1,7 @@
-/* esp8266 SNTP Udp Client, 
+/*
+  esp8266 SNTP Udp Client, 
   active time zonve ,version
+  ver : 0.9.2
 */
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
@@ -16,6 +18,7 @@ const char* timeServer = "ntp.nict.jp";
 const int NTP_PACKET_SIZE = 48; // NTP time stamp is in the first 48 bytes of the message
 byte packetBuffer[ NTP_PACKET_SIZE]; //buffer to hold incoming and outgoing packets
 const int mSleepMin= 5; //sleep- timer
+
 const int mMaxNTtpMin=60;
 unsigned long mNowTime=0;
 
@@ -26,7 +29,8 @@ const int mActiveEnd  =16;
 // rtcMem
 struct {
   unsigned long timeCt;
-  int wakeCt;  
+  int wakeCt;
+  int modeNoAct;  
 }memData;
 
 // send an NTP request to the time server at the given address
@@ -83,7 +87,17 @@ time_t getNtpTime()
   Serial.println("No NTP Response :-(");
   return 0; // return 0 if unable to get the time
 }
-
+//
+void check_nonActive(unsigned long nTime){
+      String sNow = comFunc_conv_num2time(nTime );
+      int iNow =sNow.toInt();
+      int iNum  = Is_valid_active( iNow );
+      if(iNum== mNG_CODE){
+          memData.modeNoAct=1;
+      }else{
+          memData.modeNoAct=0;
+      }
+}
 //
 void setup() {
   Serial.begin( 115200 );
@@ -106,21 +120,27 @@ void setup() {
   int iWakeCt=0;
   if(iWake ==mOK_CODE){
      ESP.rtcUserMemoryRead(0, (uint32_t*) &memData, sizeof(memData));
-     iWakeCt = memData.wakeCt;
-     Serial.println("iWakeCt="+ String(iWakeCt  )+ ",tm=" +String(memData.timeCt ) );
-     // timeCt
-     iWakeCt=iWakeCt +1;
-     mNowTime = get_nowTime(memData.timeCt , mSleepMin , iWakeCt  ) ;
-     Serial.println( "mNowTime="+ String(mNowTime ) );
-     String sTime =comFunc_conv_num2time(mNowTime);
-     Serial.println( "sTime="+ sTime );
-     //max-count
-     int iMax= mMaxNTtpMin / mSleepMin;
-     Serial.println("iWakeCt="+ String(iWakeCt  )+ ",iMax=" +String(iMax ) );
-     if( iWakeCt > iMax ){
+     Serial.println( "nonAct="+String(memData.modeNoAct  ) );
+     if( memData.modeNoAct==mOK_CODE){
         iStartNTP= mOK_CODE;
+     }else{
+         iWakeCt = memData.wakeCt;
+         Serial.println("iWakeCt="+ String(iWakeCt  )+ ",tm=" +String(memData.timeCt ) );
+         // timeCt
+         iWakeCt=iWakeCt +1;
+         mNowTime = get_nowTime(memData.timeCt , mSleepMin , iWakeCt  ) ;
+         Serial.println( "mNowTime="+ String(mNowTime ) );
+         String sTime =comFunc_conv_num2time(mNowTime);
+         Serial.println( "sTime="+ sTime );
+         //max-count
+         int iMax= mMaxNTtpMin / mSleepMin;
+         Serial.println("iWakeCt="+ String(iWakeCt  )+ ",iMax=" +String(iMax ) );
+         if( iWakeCt > iMax ){
+            iStartNTP= mOK_CODE;
+         }
+         memData.wakeCt= iWakeCt;
+         check_nonActive(mNowTime  );
      }
-     memData.wakeCt= iWakeCt;
   }else{
     iStartNTP= mOK_CODE;
   }  
@@ -134,6 +154,7 @@ void setup() {
       mNowTime =comFunc_conv_time2num( (char *)sNow.c_str() );
       memData.timeCt = mNowTime;
       memData.wakeCt=  0;
+      check_nonActive(mNowTime  );
   }
   //write
 //  int iNow =get_timeNow();
@@ -149,6 +170,7 @@ void loop() {
        ESP.deepSleep( iSleep * 1000 * 1000);
   }
   String sNow = comFunc_conv_num2time(mNowTime );
+  Serial.println("Loop.sNow=" +sNow);
   int iNow =sNow.toInt();
   int iNum  = Is_valid_active( iNow );
   Serial.println( "iNum=" + String(iNum  ) );
@@ -162,6 +184,7 @@ void loop() {
 //  delay(1000);
   ESP.deepSleep( iSleep * 1000 * 1000);
 }
+
 
 
 
